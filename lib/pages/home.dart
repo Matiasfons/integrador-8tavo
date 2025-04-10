@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -8,26 +9,32 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _currentIndex = 0;
-  
-  // Datos de ejemplo para signos vitales
-  final Map<String, dynamic> _vitalSigns = {
-    'heartRate': 72,
-    'bloodPressure': '120/80',
-    'oxygenLevel': 98,
-    'temperature': 36.5,
+  bool _isLoading = true;
+
+  // Datos de signos vitales
+  Map<String, dynamic> _vitalSigns = {
+    'heartRate': 0,
+    'bloodPressure': '0/0',
+    'oxygenLevel': 0,
+    'temperature': 0.0,
   };
-  
-  // Datos de ejemplo para actividad física
-  final Map<String, dynamic> _activityData = {
-    'steps': 8456,
-    'calories': 420,
-    'sleep': 7.5,
-    'level': 12,
-    'exp': 78, // porcentaje para el siguiente nivel
+
+  // Datos de actividad física
+  Map<String, dynamic> _activityData = {
+    'steps': 0,
+    'calories': 0,
+    'sleep': 0.0,
   };
+
+  // Información del usuario
+  String _userName = "Usuario";
+
+  // Referencia a Supabase
+  final _supabase = Supabase.instance.client;
 
   @override
   void initState() {
@@ -38,12 +45,129 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         _currentIndex = _tabController.index;
       });
     });
+    _loadUserData();
   }
-  
+
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  // Función para cargar todos los datos del usuario
+  Future<void> _loadUserData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+
+      if (userId == null) {
+        throw Exception('No hay usuario autenticado');
+      }
+
+      // Cargar datos del usuario
+      await _loadUserProfile(userId);
+
+      // Cargar signos vitales más recientes
+      await _loadLatestVitalSigns(userId);
+
+      // Cargar actividad física más reciente
+      await _loadLatestActivity(userId);
+
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar datos: ${error.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Cargar datos del perfil del usuario
+  Future<void> _loadUserProfile(String userId) async {
+    try {
+      final response =
+          await _supabase.from('users').select().eq('id', userId).single();
+
+      if (mounted && response != null) {
+        setState(() {
+          _userName = response['name'] ?? "Usuario";
+        });
+      }
+    } catch (error) {
+      // Continuar aunque falle, no es crítico
+      print('Error al cargar perfil: $error');
+    }
+  }
+
+  // Cargar signos vitales más recientes
+  Future<void> _loadLatestVitalSigns(String userId) async {
+    try {
+      final response =
+          await _supabase
+              .from('vital_signs')
+              .select()
+              .eq('id_usuario', userId)
+              .order('fecha_registro', ascending: false)
+              .limit(1)
+              .maybeSingle();
+
+      if (mounted && response != null) {
+        setState(() {
+          _vitalSigns = {
+            'heartRate': response['frecuencia_cardiaca'] ?? 0,
+            'bloodPressure':
+                "${response['presion_arterial_sistolica'] ?? 0}/${response['presion_arterial_diastolica'] ?? 0}",
+            'oxygenLevel': response['oxigeno_sangre'] ?? 0,
+            'temperature': response['temperatura'] ?? 0.0,
+          };
+        });
+      }
+    } catch (error) {
+      // Continuar aunque falle, no es crítico
+      print('Error al cargar signos vitales: $error');
+    }
+  }
+
+  // Cargar actividad física más reciente
+  Future<void> _loadLatestActivity(String userId) async {
+    try {
+      final response =
+          await _supabase
+              .from('physical_activity')
+              .select()
+              .eq('id_usuario', userId)
+              .order('fecha_registro', ascending: false)
+              .limit(1)
+              .maybeSingle();
+
+      if (mounted && response != null) {
+        setState(() {
+          _activityData = {
+            'steps': response['pasos'] ?? 0,
+            'calories': response['calorias_quemadas'] ?? 0,
+            'sleep': response['horas_sueño'] ?? 0.0,
+          };
+        });
+      }
+    } catch (error) {
+      // Continuar aunque falle, no es crítico
+      print('Error al cargar actividad física: $error');
+    }
   }
 
   @override
@@ -54,7 +178,6 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         child: Stack(
           children: [
             // Fondo con efecto de partículas (simulado con gradiente)
-      
             Container(
               decoration: BoxDecoration(
                 gradient: RadialGradient(
@@ -67,26 +190,30 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 ),
               ),
             ),
-            
+
             // Contenido principal
-            Column(
-              children: [
-                _buildAppBar(),
-                _buildUserStatusBar(),
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildDashboardTab(),
-                      _buildVitalSignsTab(),
-                      _buildActivityTab(),
-                      _buildProfileTab(),
-                    ],
-                  ),
+            _isLoading
+                ? const Center(
+                  child: CircularProgressIndicator(color: Color(0xFF4D80E6)),
+                )
+                : Column(
+                  children: [
+                    _buildAppBar(),
+                    _buildWelcomeHeader(),
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildDashboardTab(),
+                          _buildVitalSignsTab(),
+                          _buildActivityTab(),
+                          _buildProfileTab(),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            
+
             // Barra de navegación inferior
             Positioned(
               bottom: 0,
@@ -129,9 +256,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           Row(
             children: [
               IconButton(
-                icon: const Icon(Icons.notifications, color: Color(0xFF4D80E6)),
+                icon: const Icon(Icons.refresh, color: Color(0xFF4D80E6)),
                 onPressed: () {
-                  // Navegación a pantalla de notificaciones
+                  _loadUserData(); // Recargar datos
                 },
               ),
               IconButton(
@@ -147,10 +274,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     );
   }
 
-  // Barra de estado del usuario con nivel y progreso
-  Widget _buildUserStatusBar() {
+  // Encabezado de bienvenida
+  Widget _buildWelcomeHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.7),
         border: Border(
@@ -162,17 +289,13 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       ),
       child: Row(
         children: [
-          // Avatar del usuario con brillo de nivel
           Container(
             width: 50,
             height: 50,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.black,
-              border: Border.all(
-                color: const Color(0xFF4D80E6),
-                width: 2.0,
-              ),
+              border: Border.all(color: const Color(0xFF4D80E6), width: 2.0),
               boxShadow: [
                 BoxShadow(
                   color: const Color(0xFF4D80E6).withOpacity(0.5),
@@ -181,79 +304,31 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 ),
               ],
             ),
-            child: Center(
-              child: Text(
-                "${_activityData['level']}",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
+            child: const Center(
+              child: Icon(Icons.person, color: Color(0xFF4D80E6), size: 30),
             ),
           ),
-          const SizedBox(width: 12.0),
-          
-          // Barra de progreso de nivel
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "NIVEL DE CAZADOR",
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
-                    ),
-                    Text(
-                      "${_activityData['exp']}%",
-                      style: const TextStyle(
-                        color: Color(0xFF4D80E6),
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+          const SizedBox(width: 16.0),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Bienvenido, ${_userName.toString().split(" ")[0]}",
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(height: 4.0),
-                Stack(
-                  children: [
-                    // Fondo de la barra de progreso
-                    Container(
-                      height: 6.0,
-                      decoration: BoxDecoration(
-                        color: Colors.black,
-                        borderRadius: BorderRadius.circular(3.0),
-                      ),
-                    ),
-                    // Progreso
-                    FractionallySizedBox(
-                      widthFactor: _activityData['exp'] / 100,
-                      child: Container(
-                        height: 6.0,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF4D80E6), Color(0xFF9567E0)],
-                          ),
-                          borderRadius: BorderRadius.circular(3.0),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF4D80E6).withOpacity(0.5),
-                              blurRadius: 4.0,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "¿Cómo te sientes hoy?",
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 14,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
@@ -270,7 +345,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           // Título de la sección
           _buildSectionTitle("RESUMEN DE SALUD"),
           const SizedBox(height: 16.0),
-          
+
           // Signos vitales en tarjetas
           GridView.count(
             crossAxisCount: 2,
@@ -279,11 +354,6 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             children: [
-                    ElevatedButton(onPressed: ()async{
-              final supabase =  Supabase.instance.client;
-              await supabase.auth.signOut();
-              Navigator.pushNamed(context, "/");
-            }, child: Text("Cerrar Sesión")),
               // Frecuencia cardíaca
               _buildVitalSignCard(
                 "FRECUENCIA\nCARDÍACA",
@@ -291,8 +361,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 "bpm",
                 const Color(0xFFE63946),
                 Icons.favorite,
+                "/vital_signs",
               ),
-              
+
               // Presión arterial
               _buildVitalSignCard(
                 "PRESIÓN\nARTERIAL",
@@ -300,8 +371,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 "mmHg",
                 const Color(0xFF4D80E6),
                 Icons.show_chart,
+                "/vital_signs",
               ),
-              
+
               // Oxígeno en sangre
               _buildVitalSignCard(
                 "SATURACIÓN\nOXÍGENO",
@@ -309,8 +381,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 "%",
                 const Color(0xFF9567E0),
                 Icons.air,
+                "/vital_signs",
               ),
-              
+
               // Temperatura
               _buildVitalSignCard(
                 "TEMPERATURA\nCORPORAL",
@@ -318,16 +391,37 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 "°C",
                 const Color(0xFFFF9E00),
                 Icons.thermostat,
+                "/vital_signs",
+              ),
+
+              // Calculadora IMC
+              _buildVitalSignCard(
+                "Calculadora\nde IMC",
+                "IMC",
+                "",
+                const Color(0xFF8BC34A),
+                Icons.calculate,
+                "/imc_calculator",
+              ),
+
+              // ChatBot (si lo tienes en la app)
+              _buildVitalSignCard(
+                "ChatBot Especialista",
+                "IA",
+                "",
+                const Color.fromARGB(255, 36, 154, 217),
+                Icons.chat_bubble_outline,
+                "/chat-bot",
               ),
             ],
           ),
-          
+
           const SizedBox(height: 24.0),
-          
+
           // Título de actividad física
           _buildSectionTitle("ESTADÍSTICAS DE ENTRENAMIENTO"),
           const SizedBox(height: 16.0),
-          
+
           // Tarjetas de actividad física
           Row(
             children: [
@@ -356,47 +450,47 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               ),
             ],
           ),
-          
+
           const SizedBox(height: 24.0),
-          
+
           // Tarjetas de acceso rápido a módulos
-          _buildSectionTitle("MISIONES ACTIVAS"),
+          _buildSectionTitle("ACCIONES RÁPIDAS"),
           const SizedBox(height: 16.0),
-          
+
           _buildMissionCard(
             "REGISTRO DIARIO",
-            "Registra tus signos vitales para obtener +50 EXP",
+            "Registra tus signos vitales para monitorear tu salud",
             const Color(0xFF4D80E6),
             Icons.assignment,
             () {
-              // Navegación a pantalla de registro de signos vitales
+              Navigator.of(context).pushNamed('/vital_signs');
             },
           ),
-          
+
           const SizedBox(height: 12.0),
-          
+
           _buildMissionCard(
             "CONTACTOS DE EMERGENCIA",
-            "Añade al menos un contacto para +30 EXP",
+            "Añade contactos para casos de emergencia",
             const Color(0xFF9567E0),
             Icons.contact_phone,
             () {
-              // Navegación a pantalla de contactos
+              Navigator.of(context).pushNamed('/emergency_contacts');
             },
           ),
-          
+
           const SizedBox(height: 12.0),
-          
+
           _buildMissionCard(
             "SEGUIMIENTO DE ACTIVIDAD",
-            "Completa 10,000 pasos para +100 EXP",
+            "Registra tu actividad física y sueño",
             const Color(0xFFE63946),
             Icons.fitness_center,
             () {
-              // Navegación a pantalla de actividad física
+              Navigator.of(context).pushNamed('/physical_activity');
             },
           ),
-          
+
           // Espacio para compensar la barra de navegación
           const SizedBox(height: 80.0),
         ],
@@ -418,10 +512,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           const SizedBox(height: 16),
           const Text(
             "Módulo de Signos Vitales",
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 18,
-            ),
+            style: TextStyle(color: Colors.white70, fontSize: 18),
           ),
           const SizedBox(height: 24),
           ElevatedButton(
@@ -430,7 +521,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
             ),
             onPressed: () {
-              // Navegación a pantalla detallada de signos vitales
+              Navigator.of(context).pushNamed('/vital_signs');
             },
             child: const Text("REGISTRAR SIGNOS VITALES"),
           ),
@@ -453,10 +544,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           const SizedBox(height: 16),
           const Text(
             "Módulo de Actividad Física",
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 18,
-            ),
+            style: TextStyle(color: Colors.white70, fontSize: 18),
           ),
           const SizedBox(height: 24),
           ElevatedButton(
@@ -465,9 +553,20 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
             ),
             onPressed: () {
-              // Navegación a pantalla detallada de actividad física
+              Navigator.of(context).pushNamed('/physical_activity');
             },
             child: const Text("VER ESTADÍSTICAS"),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF8BC34A),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            ),
+            onPressed: () {
+              Navigator.of(context).pushNamed('/imc_calculator');
+            },
+            child: const Text("CALCULAR IMC"),
           ),
         ],
       ),
@@ -488,10 +587,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           const SizedBox(height: 16),
           const Text(
             "Perfil de Usuario",
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 18,
-            ),
+            style: TextStyle(color: Colors.white70, fontSize: 18),
           ),
           const SizedBox(height: 24),
           ElevatedButton(
@@ -500,9 +596,36 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
             ),
             onPressed: () {
-              // Navegación a pantalla detallada de perfil
+              // Navegar a la pantalla de edición de perfil
+              Navigator.of(context).pushNamed('/edit_profile');
             },
             child: const Text("EDITAR PERFIL"),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF9567E0),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            ),
+            onPressed: () {
+              Navigator.of(context).pushNamed('/emergency_contacts');
+            },
+            child: const Text("CONTACTOS DE EMERGENCIA"),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE63946),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            ),
+            onPressed: () async {
+              final supabase = Supabase.instance.client;
+              await supabase.auth.signOut();
+              if (mounted) {
+                Navigator.pushNamed(context, "/login");
+              }
+            },
+            child: const Text("CERRAR SESIÓN"),
           ),
         ],
       ),
@@ -538,7 +661,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   // Ítem de la barra de navegación
   Widget _buildNavItem(int index, String label, IconData icon) {
     final bool isSelected = _currentIndex == index;
-    
+
     return GestureDetector(
       onTap: () {
         _tabController.animateTo(index);
@@ -548,18 +671,20 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         children: [
           Icon(
             icon,
-            color: isSelected 
-                ? const Color(0xFF4D80E6) 
-                : Colors.white.withOpacity(0.5),
+            color:
+                isSelected
+                    ? const Color(0xFF4D80E6)
+                    : Colors.white.withOpacity(0.5),
             size: 26,
           ),
           const SizedBox(height: 4),
           Text(
             label,
             style: TextStyle(
-              color: isSelected 
-                  ? const Color(0xFF4D80E6) 
-                  : Colors.white.withOpacity(0.5),
+              color:
+                  isSelected
+                      ? const Color(0xFF4D80E6)
+                      : Colors.white.withOpacity(0.5),
               fontSize: 10,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             ),
@@ -619,65 +744,65 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   // Tarjeta para signo vital
-  Widget _buildVitalSignCard(String title, String value, String unit, Color color, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withOpacity(0.3),
-          width: 1,
+  Widget _buildVitalSignCard(
+    String title,
+    String value,
+    String unit,
+    Color color,
+    IconData icon,
+    String url,
+  ) {
+    return GestureDetector(
+      onTap: () {
+        if (url.isNotEmpty) {
+          Navigator.pushNamed(context, url);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.3), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            color: color,
-            size: 24,
-          ),
-          const Spacer(),
-          Text(
-            value,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              shadows: [
-                Shadow(
-                  color: color.withOpacity(0.5),
-                  blurRadius: 4,
-                ),
-              ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: color, size: 24),
+            const Spacer(),
+            Text(
+              value,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                shadows: [Shadow(color: color.withOpacity(0.5), blurRadius: 4)],
+              ),
             ),
-          ),
-          Text(
-            unit,
-            style: TextStyle(
-              color: color.withOpacity(0.8),
-              fontSize: 12,
+            Text(
+              unit,
+              style: TextStyle(color: color.withOpacity(0.8), fontSize: 12),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -697,11 +822,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            color: const Color(0xFF4D80E6),
-            size: 20,
-          ),
+          Icon(icon, color: const Color(0xFF4D80E6), size: 20),
           const SizedBox(height: 8),
           Text(
             value,
@@ -725,8 +846,14 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     );
   }
 
-  // Tarjeta para misiones/tareas
-  Widget _buildMissionCard(String title, String description, Color color, IconData icon, VoidCallback onTap) {
+  // Tarjeta para acciones rápidas
+  Widget _buildMissionCard(
+    String title,
+    String description,
+    Color color,
+    IconData icon,
+    VoidCallback onTap,
+  ) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -737,10 +864,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           decoration: BoxDecoration(
             color: const Color(0xFF1E1E1E),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: color.withOpacity(0.3),
-              width: 1,
-            ),
+            border: Border.all(color: color.withOpacity(0.3), width: 1),
           ),
           child: Row(
             children: [
@@ -749,16 +873,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: color.withOpacity(0.3),
-                    width: 1,
-                  ),
+                  border: Border.all(color: color.withOpacity(0.3), width: 1),
                 ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: 24,
-                ),
+                child: Icon(icon, color: color, size: 24),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -784,11 +901,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   ],
                 ),
               ),
-              Icon(
-                Icons.arrow_forward_ios,
-                color: color,
-                size: 16,
-              ),
+              Icon(Icons.arrow_forward_ios, color: color, size: 16),
             ],
           ),
         ),

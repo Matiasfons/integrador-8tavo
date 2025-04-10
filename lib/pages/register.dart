@@ -135,7 +135,7 @@ class _RegisterPageState extends State<RegisterPage> {
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: Text(
-          "REGISTRO DE CAZADOR",
+          "REGISTRO DE DEPORTISTA",
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
@@ -203,7 +203,7 @@ class _RegisterPageState extends State<RegisterPage> {
                             ],
                           ),
                           child: Text(
-                            "REÚNE LOS REQUISITOS\nPARA CONVERTIRTE EN CAZADOR",
+                            "REÚNE LOS REQUISITOS\nPARA CONVERTIRTE EN DEPORTISTA",
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 16,
@@ -376,7 +376,7 @@ class _RegisterPageState extends State<RegisterPage> {
                                   color: Colors.white,
                                 )
                                 : Text(
-                                  'CONVERTIRSE EN CAZADOR',
+                                  'CONVERTIRSE EN DEPORTISTA',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
