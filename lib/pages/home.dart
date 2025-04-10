@@ -622,7 +622,7 @@ class _HomePageState extends State<HomePage>
               final supabase = Supabase.instance.client;
               await supabase.auth.signOut();
               if (mounted) {
-                Navigator.pushNamed(context, "/login");
+                Navigator.pushReplacementNamed(context, "/");
               }
             },
             child: const Text("CERRAR SESIÓN"),
